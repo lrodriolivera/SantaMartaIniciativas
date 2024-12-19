@@ -1,0 +1,26 @@
+export const mockData = [
+  {
+    "LINEA ESTRATEGICA": "Desarrollo Social",
+    "RECURSOS TOTALES": 2500000000,
+    "2024": 500000000,
+    "2025": 600000000,
+    "2026": 700000000,
+    "2027": 700000000
+  },
+  {
+    "LINEA ESTRATEGICA": "Infraestructura",
+    "RECURSOS TOTALES": 3000000000,
+    "2024": 800000000,
+    "2025": 700000000,
+    "2026": 800000000,
+    "2027": 700000000
+  },
+  {
+    "LINEA ESTRATEGICA": "Medio Ambiente",
+    "RECURSOS TOTALES": 1500000000,
+    "2024": 300000000,
+    "2025": 400000000,
+    "2026": 400000000,
+    "2027": 400000000
+  }
+];

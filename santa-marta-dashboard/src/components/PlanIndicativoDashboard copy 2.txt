@@ -1,0 +1,346 @@
+import React, { useState, useEffect } from 'react';
+import * as XLSX from 'xlsx';
+import _ from 'lodash';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "./ui/card";
+import { Input } from "./ui/input";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Line,
+  LineChart
+} from 'recharts';
+
+// Colores de Santa Marta
+const SANTA_MARTA_COLORS = {
+  primary: '#003B70',    // Azul marino
+  secondary: '#B8860B',  // Dorado
+  accent: '#FFD700',     // Dorado claro
+  light: '#F5F5F5',     // Blanco grisáceo
+  white: '#FFFFFF'
+};
+
+const CHART_COLORS = [
+  SANTA_MARTA_COLORS.primary,
+  SANTA_MARTA_COLORS.secondary,
+  SANTA_MARTA_COLORS.accent,
+  '#1E90FF',
+  '#20B2AA',
+  '#B8860B'
+];
+
+const formatCurrency = (value) => {
+  if (!value) return '$ 0';
+  return new Intl.NumberFormat('es-CO', {
+    style: 'currency',
+    currency: 'COP',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0
+  }).format(value);
+};
+
+const KPICard = ({ title, value, description }) => (
+  <Card className="bg-white">
+    <CardHeader className="pb-2">
+      <CardTitle className="text-sm font-medium text-gray-500">{title}</CardTitle>
+    </CardHeader>
+    <CardContent>
+      <div className="text-2xl font-bold text-gray-900">{value}</div>
+      <p className="text-xs text-gray-500 mt-1">{description}</p>
+    </CardContent>
+  </Card>
+);
+
+const PlanIndicativoDashboard = () => {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedLinea, setSelectedLinea] = useState("todas");
+  
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const response = await fetch('/plan-indicativo.xlsx');
+        if (!response.ok) throw new Error('Error al cargar el archivo Excel');
+        const arrayBuffer = await response.arrayBuffer();
+        const data = new Uint8Array(arrayBuffer);
+        const workbook = XLSX.read(data, {
+          type: 'array'
+        });
+        
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, {
+          raw: true,
+          defval: null
+        });
+        
+        console.log('Datos cargados:', jsonData.slice(0, 2)); // Para debugging
+        setData(jsonData);
+        setLoading(false);
+      } catch (error) {
+        console.error('Error detallado:', error);
+        setLoading(false);
+      }
+    };
+    
+    loadData();
+  }, []);
+
+  if (loading || !data) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <div className="text-2xl font-semibold text-gray-600">Cargando datos...</div>
+      </div>
+    );
+  }
+
+  // Procesar datos para las visualizaciones
+  const lineasEstrategicas = _.groupBy(data, 'Linea Estrategica');
+  const inversionPorLinea = Object.entries(lineasEstrategicas)
+    .map(([linea, proyectos]) => ({
+      name: linea,
+      value: _.sumBy(proyectos, 'RECURSOS TOTALES'),
+      proyectos: proyectos.length
+    }))
+    .filter(item => item.name && item.name !== 'undefined');
+
+  const inversionPorAno = [
+    { name: '2024', value: _.sumBy(data, 'Total 2024') },
+    { name: '2025', value: _.sumBy(data, 'Total 2025') },
+    { name: '2026', value: _.sumBy(data, 'Total 2026') },
+    { name: '2027', value: _.sumBy(data, 'Total 2027') }
+  ];
+
+  // Calcular KPIs
+  const totalInversion = _.sumBy(data, 'RECURSOS TOTALES');
+  const totalProyectos = data.length;
+  const promedioProyecto = totalInversion / totalProyectos;
+  const maxInversion = _.maxBy(data, 'RECURSOS TOTALES');
+
+  // Calcular inversión acumulada
+  const inversionAcumulada = inversionPorAno.map((item, index) => ({
+    name: item.name,
+    value: item.value,
+    acumulado: _.sumBy(inversionPorAno.slice(0, index + 1), 'value')
+  }));
+
+  // Filtrar proyectos para la tabla
+  const filteredProyectos = data.filter(proyecto => {
+    const matchesSearch = searchTerm === "" || 
+      proyecto['Personalización de Indicador de Producto']?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      proyecto['Linea Estrategica']?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesLinea = selectedLinea === "todas" || 
+      proyecto['Linea Estrategica'] === selectedLinea;
+    
+    return matchesSearch && matchesLinea;
+  });
+
+  return (
+    <div className="p-4 bg-gray-50 min-h-screen">
+      <div className="max-w-7xl mx-auto">
+        <header className="mb-8 bg-[#003B70] text-white p-6 rounded-lg shadow-lg">
+          <h1 className="text-3xl font-bold mb-2">Plan Indicativo 2024-2027</h1>
+          <p className="text-gray-200">Distrito de Santa Marta, Colombia</p>
+        </header>
+
+        {/* KPIs */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          <KPICard 
+            title="Inversión Total"
+            value={formatCurrency(totalInversion)}
+            description="Presupuesto total del plan indicativo"
+          />
+          <KPICard 
+            title="Total Proyectos"
+            value={totalProyectos}
+            description="Número total de iniciativas"
+          />
+          <KPICard 
+            title="Promedio por Proyecto"
+            value={formatCurrency(promedioProyecto)}
+            description="Inversión promedio por proyecto"
+          />
+          <KPICard 
+            title="Mayor Inversión"
+            value={formatCurrency(maxInversion?.['RECURSOS TOTALES'])}
+            description={maxInversion?.['Linea Estrategica']}
+          />
+        </div>
+
+        {/* Gráficos principales */}
+        <div className="grid lg:grid-cols-2 gap-6 mb-8">
+          {/* Gráfico de Inversión por Año */}
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle>Inversión Anual y Acumulada</CardTitle>
+              <CardDescription>Distribución y progresión de recursos por año</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="h-80">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={inversionAcumulada}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" />
+                    <YAxis tickFormatter={(value) => `$${(value / 1e9).toFixed(0)}B`} />
+                    <Tooltip formatter={(value) => formatCurrency(value)} />
+                    <Legend />
+                    <Line 
+                      type="monotone" 
+                      dataKey="value" 
+                      stroke={SANTA_MARTA_COLORS.primary} 
+                      name="Inversión Anual" 
+                      strokeWidth={2}
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="acumulado" 
+                      stroke={SANTA_MARTA_COLORS.secondary} 
+                      name="Acumulado"
+                      strokeWidth={2}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Gráfico de Distribución por Línea Estratégica */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Distribución por Línea Estratégica</CardTitle>
+              <CardDescription>Porcentaje del presupuesto total</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="h-96">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={inversionPorLinea}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={150}
+                      fill="#8884d8"
+                      labelLine={false}
+                      label={({ name, percent }) => 
+                        `${name.substring(0, 10)}... ${(percent * 100).toFixed(1)}%`
+                      }
+                    >
+                      {inversionPorLinea.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(value) => formatCurrency(value)} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Número de Proyectos por Línea */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Proyectos por Línea Estratégica</CardTitle>
+              <CardDescription>Cantidad de iniciativas por línea</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="h-96">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={inversionPorLinea}
+                    layout="vertical"
+                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis type="number" />
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      width={150}
+                      tick={{ fontSize: 10 }}
+                      interval={0}
+                    />
+                    <Tooltip />
+                    <Bar dataKey="proyectos" fill={SANTA_MARTA_COLORS.primary} name="Número de Proyectos" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Tabla de Proyectos */}
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle>Proyectos del Plan Indicativo</CardTitle>
+            <CardDescription>Detalle de todas las iniciativas</CardDescription>
+            <div className="flex flex-col md:flex-row gap-4 mt-4">
+              <Input
+                placeholder="Buscar proyectos..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="max-w-sm"
+              />
+              <select
+                className="border rounded-md p-2"
+                value={selectedLinea}
+                onChange={(e) => setSelectedLinea(e.target.value)}
+              >
+                <option value="todas">Todas las líneas estratégicas</option>
+                {Object.keys(lineasEstrategicas)
+                  .filter(linea => linea !== 'undefined')
+                  .map(linea => (
+                    <option key={linea} value={linea}>{linea}</option>
+                  ))
+                }
+              </select>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="border-b bg-gray-50">
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Línea Estratégica</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Proyecto</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Meta Cuatrienio</th>
+                    <th className="px-4 py-3 text-right text-sm font-semibold text-gray-900">Inversión Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {filteredProyectos.map((proyecto, index) => (
+                    <tr key={index} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 text-sm text-gray-900">{proyecto['Linea Estrategica']}</td>
+                      <td className="px-4 py-3 text-sm text-gray-900">{proyecto['Personalización de Indicador de Producto']}</td>
+                      <td className="px-4 py-3 text-sm text-gray-900">{proyecto['Meta del cuatrienio']}</td>
+                      <td className="px-4 py-3 text-sm text-gray-900 text-right">{formatCurrency(proyecto['RECURSOS TOTALES'])}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+};
+
+export default PlanIndicativoDashboard;
